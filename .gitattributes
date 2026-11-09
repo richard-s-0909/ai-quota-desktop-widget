@@ -2,4 +2,10 @@
 *.ps1 text eol=crlf
 *.vbs text eol=crlf
 *.txt text eol=crlf
-*.md  text eol=lf
+
+# macOS / 通用文件用 LF
+*.md    text eol=lf
+*.sh    text eol=lf
+*.swift text eol=lf
+*.plist text eol=lf
+*.yml   text eol=lf

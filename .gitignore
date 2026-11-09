@@ -2,3 +2,8 @@
 config.json
 widget.log
 *.bak
+
+# macOS 编译产物
+macos/.build/
+macos/build/
+.DS_Store
