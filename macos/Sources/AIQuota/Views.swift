@@ -130,6 +130,8 @@ struct Segmented: View {
                 let on = opt.1 == selection
                 Text(opt.0)
                     .font(.system(size: 11 * s))
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundColor(on ? Color(hex: 0x141417) : Theme.sub)
                     .padding(.horizontal, 8 * s).padding(.vertical, 3 * s)
                     .background(RoundedRectangle(cornerRadius: 6 * s).fill(on ? Theme.text : Color.clear))
@@ -137,6 +139,7 @@ struct Segmented: View {
                     .onTapGesture { selection = opt.1 }
             }
         }
+        .fixedSize()
     }
 }
 
@@ -343,7 +346,7 @@ struct SettingRow<Trailing: View>: View {
     }
     var body: some View {
         HStack(spacing: 8 * s) {
-            Text(title).font(.system(size: 12 * s)).foregroundColor(Theme.text)
+            Text(title).font(.system(size: 12 * s)).foregroundColor(Theme.text).lineLimit(1).fixedSize()
             Spacer(minLength: 4 * s)
             trailing
         }

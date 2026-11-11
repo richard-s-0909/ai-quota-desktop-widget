@@ -116,6 +116,10 @@ final class FloatingPanelController {
         f.size = size
         f.origin.y = top - size.height
         if onRight { f.origin.x += oldW - size.width }
+        // 变高后底部超出屏幕时整体上移，保证设置页等内容完整可见
+        if let vf = (panel.screen ?? NSScreen.main)?.visibleFrame, f.minY < vf.minY {
+            f.origin.y = min(vf.minY, vf.maxY - f.height)
+        }
         panel.setFrame(f, display: true)
     }
 

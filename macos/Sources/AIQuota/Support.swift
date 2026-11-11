@@ -59,12 +59,12 @@ func formatReset(_ d: Date?, now: Date) -> String {
     let span = d.timeIntervalSince(now)
     if span <= 0 { return "即将重置" }
     let mins = Int(span / 60)
-    if span < 3600 { return "\(max(1, mins)) 分钟后重置" }
-    if span < 86400 { return "\(mins / 60) 小时 \(mins % 60) 分后重置" }
+    if span < 3600 { return "\(max(1, mins))分钟后重置" }
+    if span < 86400 { return "\(mins / 60)小时\(mins % 60)分后重置" }
     let df = DateFormatter()
     df.locale = Locale(identifier: "zh_CN")
     df.dateFormat = "EEE HH:mm"
-    return "\(df.string(from: d)) 重置 · \(Int(span / 86400)) 天后"
+    return "\(df.string(from: d)) 重置"
 }
 
 func money(_ currency: String, _ v: Double, digits: Int = 2) -> String {
