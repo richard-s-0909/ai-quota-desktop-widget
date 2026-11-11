@@ -15,20 +15,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build universal app (arm64 + x86_64)
+      - name: Build universal app (arm64 + x86_64) and DMG
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0"; fi
           chmod +x macos/build.sh
           ./macos/build.sh "$VERSION"
 
+      # 用演示数据启动应用并截图，检查界面（不读取任何真实登录信息）
+      - name: UI screenshots (demo data)
+        if: github.ref_type != 'tag'
+        run: |
+          mkdir -p shots
+          BIN=macos/build/AIQuota.app/Contents/MacOS/AIQuota
+          shoot() {
+            local name=$1; shift
+            env AIQUOTA_DEMO=1 "$@" "$BIN" > /dev/null 2>&1 &
+            local pid=$!
+            sleep 8
+            screencapture -x "shots/$name.png" || true
+            kill $pid 2>/dev/null || true
+            sleep 2
+          }
+          shoot main AIQUOTA_MENULEVEL=2
+          shoot hover AIQUOTA_HOVER=1 AIQUOTA_MENULEVEL=3
+          shoot settings AIQUOTA_PAGE=settings AIQUOTA_MENULEVEL=1
+          shoot popover AIQUOTA_PREVIEW_POPOVER=1 AIQUOTA_MENULEVEL=0
+          shoot compact AIQUOTA_COMPACT=1 AIQUOTA_MENULEVEL=2
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref_type != 'tag'
+        with:
+          name: screenshots
+          path: shots/*.png
+
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-universal
-          path: macos/build/*.zip
+          name: macos-universal-dmg
+          path: macos/build/*.dmg
 
       - name: Attach to GitHub release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" macos/build/*.zip --clobber
+          gh release upload "$GITHUB_REF_NAME" macos/build/*.dmg --clobber

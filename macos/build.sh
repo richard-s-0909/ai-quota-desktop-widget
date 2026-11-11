@@ -1,12 +1,12 @@
 #!/bin/bash
-# 编译通用版（Apple Silicon + Intel 合在一个文件里）并打包成 .app 和 zip
+# 编译通用版（Apple Silicon + Intel 合在一个文件里），打包成 .app 和 .dmg
 # 用法: ./build.sh [版本号]
 set -euo pipefail
 cd "$(dirname "$0")"
 
 VERSION="${1:-0.0.0}"
 APP="build/AIQuota.app"
-ZIP="build/ai-quota-desktop-widget-macos-universal-v${VERSION}.zip"
+DMG="build/ai-quota-desktop-widget-macos-universal-v${VERSION}.dmg"
 
 swift build -c release --arch arm64 --arch x86_64
 BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
@@ -22,5 +22,11 @@ codesign --force --deep --sign - "$APP"
 echo "架构:"
 lipo -info "$APP/Contents/MacOS/AIQuota"
 
-ditto -c -k --keepParent "$APP" "$ZIP"
-echo "打包完成: $ZIP"
+# DMG：里面放 AIQuota.app 和“应用程序”快捷方式，拖进去即可安装
+STAGE="build/dmg"
+mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -volname "AI 用量" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+rm -rf "$STAGE"
+echo "打包完成: $DMG"

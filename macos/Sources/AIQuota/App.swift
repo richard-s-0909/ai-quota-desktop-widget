@@ -8,7 +8,7 @@ struct AIQuotaApp: App {
     @StateObject var store = Store.shared
 
     var body: some Scene {
-        // 菜单栏图标：点开显示完整卡片
+        // 菜单栏：显示剩余数字，点开是完整面板（设置也在面板里）
         MenuBarExtra {
             WidgetView(mode: .popover).environmentObject(store)
         } label: {
@@ -20,7 +20,6 @@ struct AIQuotaApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: FloatingPanelController?
-    var settings: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in self.setup() }
@@ -29,36 +28,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func setup() {
         NSApp.setActivationPolicy(.accessory)   // 不在程序坞显示图标
-        let store = Store.shared
-        let settings = SettingsWindowController()
-        self.settings = settings
-        store.openSettings = { settings.show(store: store) }
-        panel = FloatingPanelController(store: store)
-    }
-}
-
-// MARK: - 设置窗口
-
-@MainActor
-final class SettingsWindowController {
-    private var window: NSWindow?
-
-    func show(store: Store) {
-        if window == nil {
-            let host = NSHostingController(rootView: SettingsView().environmentObject(store))
-            let w = NSWindow(contentViewController: host)
-            w.title = "AI 用量 · 设置"
-            w.styleMask = [.titled, .closable]
-            w.isReleasedWhenClosed = false
-            w.center()
-            window = w
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        panel = FloatingPanelController(store: Store.shared)
     }
 }
 
 // MARK: - 桌面悬浮窗
+
+/// 无边框面板默认不能成为 key window，设置页里的开关/滑块需要它
+final class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
 
 private struct SizeKey: PreferenceKey {
     static let defaultValue: CGSize = .zero
@@ -68,20 +47,18 @@ private struct SizeKey: PreferenceKey {
 struct FloatingRoot: View {
     @EnvironmentObject var store: Store
     let controller: FloatingPanelController
+    private let previewPopover = ProcessInfo.processInfo.environment["AIQUOTA_PREVIEW_POPOVER"] == "1"
 
     var body: some View {
         Group {
-            if store.compact { PillView() } else { WidgetView(mode: .floating) }
+            if store.compact { PillView() }
+            else { WidgetView(mode: previewPopover ? .popover : .floating) }
         }
+        .environment(\.windowDrag, WindowDrag(changed: { controller.dragChanged() }, ended: { controller.dragEnded() }))
         .padding(16)                       // 给阴影留空间
         .fixedSize()
         .background(GeometryReader { g in Color.clear.preference(key: SizeKey.self, value: g.size) })
         .onPreferenceChange(SizeKey.self) { size in controller.resize(to: size) }
-        .gesture(
-            DragGesture(minimumDistance: 2)
-                .onChanged { _ in controller.dragChanged() }
-                .onEnded { _ in controller.dragEnded() }
-        )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
@@ -96,13 +73,14 @@ final class FloatingPanelController {
 
     init(store: Store) {
         self.store = store
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 480),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 480),
+                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
+        panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let host = NSHostingView(rootView: FloatingRoot(controller: self).environmentObject(store))
@@ -111,11 +89,11 @@ final class FloatingPanelController {
 
         // 恢复上次的位置（记录的是左上角），默认放在屏幕右上角
         let ud = UserDefaults.standard
-        if ud.object(forKey: "panelX") != nil {
+        if ud.object(forKey: "panelX") != nil && !store.demo {
             let x = ud.double(forKey: "panelX"), top = ud.double(forKey: "panelTop")
             panel.setFrameTopLeftPoint(NSPoint(x: x, y: top))
         } else if let vf = NSScreen.main?.visibleFrame {
-            panel.setFrameTopLeftPoint(NSPoint(x: vf.maxX - 350, y: vf.maxY - 10))
+            panel.setFrameTopLeftPoint(NSPoint(x: vf.maxX - 340, y: vf.maxY - 10))
         }
         ensureOnScreen()
 
@@ -164,7 +142,7 @@ final class FloatingPanelController {
         let f = panel.frame
         let visible = NSScreen.screens.contains { $0.visibleFrame.insetBy(dx: -100, dy: -100).contains(NSPoint(x: f.midX, y: f.maxY)) }
         if !visible, let vf = NSScreen.main?.visibleFrame {
-            panel.setFrameTopLeftPoint(NSPoint(x: vf.maxX - 350, y: vf.maxY - 10))
+            panel.setFrameTopLeftPoint(NSPoint(x: vf.maxX - 340, y: vf.maxY - 10))
         }
     }
 }

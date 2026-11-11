@@ -27,7 +27,7 @@ function Write-Log($msg) {
 # ---------- 配置 ----------
 function Load-Config {
     $cfg = @{ refresh_minutes = 5; login_warn_days = 3; topmost = $true; left = $null; top = $null
-              scale = 1.0; compact = $false; hidden = @() }
+              scale = 1.0; compact = $false; hidden = @(); minimized = $false; tray_tip_shown = $false }
     if (Test-Path $ConfigPath) {
         try {
             $j = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -237,31 +237,34 @@ function Open-App($appId) {
 }
 $script:found = @(Find-AIs)
 
-# ---------- 共享样式 ----------
+# ---------- 样式（极简风） ----------
+# 颜色：背景近黑、正文浅灰白、次要灰、提示暗灰；只有“剩余不足”时才出现黄/红
+$C = @{
+    Bg = '#F5141417'; Border = '#18FFFFFF'; Divider = '#12FFFFFF'
+    Text = '#FFEDEDEF'; Sub = '#FF8B8B94'; Faint = '#FF5E5E68'
+    Track = '#1CFFFFFF'; Amber = '#FFE5B454'; Red = '#FFE5675C'
+}
 $StylesXaml = @'
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Style x:Key="IconBtn" TargetType="Button">
     <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
-    <Setter Property="FontSize" Value="11"/>
-    <Setter Property="Foreground" Value="#C8FFFFFF"/>
+    <Setter Property="FontSize" Value="10.5"/>
+    <Setter Property="Foreground" Value="#FF8B8B94"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="Focusable" Value="False"/>
-    <Setter Property="Width" Value="26"/>
-    <Setter Property="Height" Value="26"/>
+    <Setter Property="Width" Value="24"/>
+    <Setter Property="Height" Value="24"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="B" CornerRadius="7" Background="Transparent">
+          <Border x:Name="B" CornerRadius="6" Background="Transparent">
             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="B" Property="Background" Value="#22FFFFFF"/>
-              <Setter Property="Foreground" Value="#FFFFFFFF"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="B" Property="Background" Value="#36FFFFFF"/>
+              <Setter TargetName="B" Property="Background" Value="#14FFFFFF"/>
+              <Setter Property="Foreground" Value="#FFEDEDEF"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -269,30 +272,43 @@ $StylesXaml = @'
     </Setter>
   </Style>
   <Style x:Key="IconBtnSm" TargetType="Button" BasedOn="{StaticResource IconBtn}">
-    <Setter Property="Width" Value="22"/>
-    <Setter Property="Height" Value="22"/>
-    <Setter Property="FontSize" Value="10"/>
+    <Setter Property="Width" Value="20"/>
+    <Setter Property="Height" Value="20"/>
+    <Setter Property="FontSize" Value="9.5"/>
   </Style>
-  <Style x:Key="PillBtn" TargetType="Button">
-    <Setter Property="Foreground" Value="#EBFFFFFF"/>
+  <Style x:Key="TextBtn" TargetType="Button">
+    <Setter Property="Foreground" Value="#FF8B8B94"/>
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="Focusable" Value="False"/>
-    <Setter Property="Background" Value="#14FFFFFF"/>
-    <Setter Property="Padding" Value="10,4"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="B" CornerRadius="8" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
-                  BorderThickness="1" BorderBrush="#14FFFFFF">
+          <Border Background="Transparent"><ContentPresenter VerticalAlignment="Center"/></Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter Property="Foreground" Value="#FFEDEDEF"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style x:Key="PillBtn" TargetType="Button">
+    <Setter Property="Foreground" Value="#FFEDEDEF"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Focusable" Value="False"/>
+    <Setter Property="Padding" Value="10,3"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="B" CornerRadius="6" Background="Transparent" BorderBrush="#2EFFFFFF" BorderThickness="1" Padding="{TemplateBinding Padding}">
             <ContentPresenter VerticalAlignment="Center"/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="B" Property="Background" Value="#2AFFFFFF"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="B" Property="Background" Value="#3AFFFFFF"/>
+              <Setter TargetName="B" Property="Background" Value="#14FFFFFF"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -305,15 +321,15 @@ $StylesXaml = @'
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ToggleButton">
-          <Border x:Name="Track" Width="36" Height="20" CornerRadius="10" Background="#2EFFFFFF">
-            <Ellipse x:Name="Knob" Width="14" Height="14" Fill="#B3FFFFFF" HorizontalAlignment="Left" Margin="3,0,0,0"/>
+          <Border x:Name="Track" Width="30" Height="16" CornerRadius="8" Background="#FF2A2A30">
+            <Ellipse x:Name="Knob" Width="10" Height="10" Fill="#FF8B8B94" HorizontalAlignment="Left" Margin="3,0,0,0"/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="Track" Property="Background" Value="#FF8B7CFF"/>
+              <Setter TargetName="Track" Property="Background" Value="#FFEDEDEF"/>
               <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
               <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0"/>
-              <Setter TargetName="Knob" Property="Fill" Value="#FFFFFFFF"/>
+              <Setter TargetName="Knob" Property="Fill" Value="#FF141417"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -321,24 +337,24 @@ $StylesXaml = @'
     </Setter>
   </Style>
   <Style x:Key="Seg" TargetType="RadioButton">
-    <Setter Property="Foreground" Value="#B3FFFFFF"/>
+    <Setter Property="Foreground" Value="#FF8B8B94"/>
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="Focusable" Value="False"/>
-    <Setter Property="Margin" Value="0,0,6,6"/>
+    <Setter Property="Margin" Value="0,0,4,4"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="RadioButton">
-          <Border x:Name="B" CornerRadius="8" Padding="11,4" Background="#12FFFFFF">
+          <Border x:Name="B" CornerRadius="6" Padding="10,3" Background="Transparent">
             <ContentPresenter HorizontalAlignment="Center"/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="B" Property="Background" Value="#26FFFFFF"/>
+              <Setter Property="Foreground" Value="#FFEDEDEF"/>
             </Trigger>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="B" Property="Background" Value="#FF8B7CFF"/>
-              <Setter Property="Foreground" Value="#FFFFFFFF"/>
+              <Setter TargetName="B" Property="Background" Value="#FFEDEDEF"/>
+              <Setter Property="Foreground" Value="#FF141417"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -358,7 +374,7 @@ $StylesXaml = @'
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="RepeatButton">
-          <Grid Background="Transparent"><Border Height="4" CornerRadius="2" Background="#FF8B7CFF" VerticalAlignment="Center"/></Grid>
+          <Grid Background="Transparent"><Border Height="2" CornerRadius="1" Background="#FFEDEDEF" VerticalAlignment="Center"/></Grid>
         </ControlTemplate>
       </Setter.Value>
     </Setter>
@@ -368,17 +384,15 @@ $StylesXaml = @'
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Slider">
-          <Grid Height="22" Background="Transparent">
-            <Border Height="4" CornerRadius="2" Background="#26FFFFFF" VerticalAlignment="Center"/>
+          <Grid Height="20" Background="Transparent">
+            <Border Height="2" CornerRadius="1" Background="#26FFFFFF" VerticalAlignment="Center"/>
             <Track x:Name="PART_Track">
               <Track.DecreaseRepeatButton><RepeatButton Style="{StaticResource RepeatFill}" Command="Slider.DecreaseLarge"/></Track.DecreaseRepeatButton>
               <Track.IncreaseRepeatButton><RepeatButton Style="{StaticResource RepeatTrans}" Command="Slider.IncreaseLarge"/></Track.IncreaseRepeatButton>
               <Track.Thumb>
                 <Thumb Cursor="Hand">
                   <Thumb.Template>
-                    <ControlTemplate TargetType="Thumb">
-                      <Ellipse Width="14" Height="14" Fill="White" Stroke="#FF8B7CFF" StrokeThickness="2"/>
-                    </ControlTemplate>
+                    <ControlTemplate TargetType="Thumb"><Ellipse Width="12" Height="12" Fill="#FFEDEDEF"/></ControlTemplate>
                   </Thumb.Template>
                 </Thumb>
               </Track.Thumb>
@@ -393,95 +407,54 @@ $StylesXaml = @'
 $Styles = [Windows.Markup.XamlReader]::Parse($StylesXaml)
 
 # ---------- 主界面 ----------
-$CardBg = @'
-<LinearGradientBrush StartPoint="0,0" EndPoint="0.6,1">
-  <GradientStop Color="#F7232430" Offset="0"/>
-  <GradientStop Color="#F714151B" Offset="1"/>
-</LinearGradientBrush>
-'@
-$CardBorder = @'
-<LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-  <GradientStop Color="#38FFFFFF" Offset="0"/>
-  <GradientStop Color="#0AFFFFFF" Offset="1"/>
-</LinearGradientBrush>
-'@
+$Shadow = '<DropShadowEffect BlurRadius="20" ShadowDepth="2" Direction="270" Opacity="0.35" Color="#000000"/>'
 [xml]$xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AI 剩余用量" SizeToContent="WidthAndHeight"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ResizeMode="NoResize" FontFamily="Microsoft YaHei UI" UseLayoutRounding="True">
-  <Grid x:Name="Root" Margin="16">
+  <Grid x:Name="Root" Margin="14">
     <Grid.LayoutTransform><ScaleTransform x:Name="Zoom" ScaleX="1" ScaleY="1"/></Grid.LayoutTransform>
 
-    <Border x:Name="Card" Width="300" CornerRadius="18" BorderThickness="1" Padding="14,12,14,10">
-      <Border.Background>@@BG@@</Border.Background>
-      <Border.BorderBrush>@@BORDER@@</Border.BorderBrush>
-      <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.5" Color="#000000"/></Border.Effect>
+    <Border x:Name="Card" Width="280" CornerRadius="14" Background="#F5141417" BorderBrush="#18FFFFFF" BorderThickness="1" Padding="18,13,18,12">
+      <Border.Effect>@@SHADOW@@</Border.Effect>
       <StackPanel>
         <Grid>
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Border Width="22" Height="22" CornerRadius="7" Margin="0,0,9,0">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                  <GradientStop Color="#FF9B8CFF" Offset="0"/>
-                  <GradientStop Color="#FF5AC8FA" Offset="1"/>
-                </LinearGradientBrush>
-              </Border.Background>
-              <TextBlock Text="AI" FontSize="9.5" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <TextBlock Text="AI 用量" Foreground="#F2FFFFFF" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
-          </StackPanel>
-          <StackPanel x:Name="HeaderBtns" Orientation="Horizontal" HorizontalAlignment="Right" Opacity="0.5"/>
+          <TextBlock Text="AI 用量" Foreground="#FF8B8B94" FontSize="11.5" VerticalAlignment="Center"/>
+          <StackPanel x:Name="HeaderBtns" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-4,-8,-4" Opacity="0"/>
         </Grid>
         <StackPanel x:Name="Body"/>
-        <Grid Margin="2,10,0,0">
-          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Ellipse x:Name="StatusDot" Width="6" Height="6" Fill="#FF4ADE80" Margin="0,1,7,0" VerticalAlignment="Center"/>
-            <TextBlock x:Name="Footer" Foreground="#73FFFFFF" FontSize="10.5" Text="正在加载…" VerticalAlignment="Center"/>
-          </StackPanel>
-          <StackPanel x:Name="ZoomCtl" Orientation="Horizontal" HorizontalAlignment="Right" Opacity="0.5"/>
+        <Grid Margin="0,14,0,0">
+          <TextBlock x:Name="Footer" Foreground="#FF5E5E68" FontSize="10" VerticalAlignment="Center" Text="正在加载…"/>
+          <StackPanel x:Name="ZoomCtl" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,-4,-7,-4" Opacity="0"/>
         </Grid>
       </StackPanel>
     </Border>
 
-    <Border x:Name="Pill" Visibility="Collapsed" CornerRadius="17" BorderThickness="1" Padding="11,5,5,5">
-      <Border.Background>@@BG@@</Border.Background>
-      <Border.BorderBrush>@@BORDER@@</Border.BorderBrush>
-      <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="3" Direction="270" Opacity="0.5" Color="#000000"/></Border.Effect>
+    <Border x:Name="Pill" Visibility="Collapsed" CornerRadius="16" Background="#F5141417" BorderBrush="#18FFFFFF" BorderThickness="1" Padding="14,5,5,5">
+      <Border.Effect>@@SHADOW@@</Border.Effect>
       <StackPanel x:Name="PillBody" Orientation="Horizontal"/>
     </Border>
   </Grid>
 </Window>
-'@.Replace('@@BG@@', $CardBg).Replace('@@BORDER@@', $CardBorder)
+'@.Replace('@@SHADOW@@', $Shadow)
 
 $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
 $window.Resources.MergedDictionaries.Add($Styles)
-foreach ($n in 'Root', 'Zoom', 'Card', 'HeaderBtns', 'Body', 'StatusDot', 'Footer', 'ZoomCtl', 'Pill', 'PillBody') {
+foreach ($n in 'Root', 'Zoom', 'Card', 'HeaderBtns', 'Body', 'Footer', 'ZoomCtl', 'Pill', 'PillBody') {
     Set-Variable -Name $n -Value $window.FindName($n) -Scope Script
 }
 
 # ---------- 绘制小工具 ----------
 $bc = New-Object System.Windows.Media.BrushConverter
 function Brush($hex) { return $bc.ConvertFromString($hex) }
-function ToColor($hex) { return [System.Windows.Media.ColorConverter]::ConvertFromString($hex) }
-function Mix($hex, [double]$amt) {
-    $c = ToColor $hex
-    return [System.Windows.Media.Color]::FromRgb([byte]($c.R + (255 - $c.R) * $amt), [byte]($c.G + (255 - $c.G) * $amt), [byte]($c.B + (255 - $c.B) * $amt))
-}
-function AlphaBrush($hex, [byte]$a) { $c = ToColor $hex; return New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromArgb($a, $c.R, $c.G, $c.B)) }
-function Grad($hex, [double]$angle = 0) { return New-Object System.Windows.Media.LinearGradientBrush ((ToColor $hex), (Mix $hex 0.35), $angle) }
 
 function New-Text($text, $size, $color, $weight = 'Normal', $font = $null) {
     $t = New-Object System.Windows.Controls.TextBlock
     $t.Text = $text; $t.FontSize = $size; $t.Foreground = (Brush $color); $t.FontWeight = $weight
     $t.TextWrapping = 'Wrap'; $t.VerticalAlignment = 'Center'
     if ($font) { $t.FontFamily = $font }
-    return $t
-}
-function New-Icon($code, $size, $color) {
-    $t = New-Text ([string][char]$code) $size $color 'Normal' $IconFont
-    $t.TextWrapping = 'NoWrap'
     return $t
 }
 function New-Run($text, $size, $color, $weight = 'Normal', $font = $null) {
@@ -498,33 +471,38 @@ function New-Button($content, $style, $tip, [scriptblock]$action) {
     $b.Add_Click({ param($s, $e) try { & $s.Tag } catch { Write-Log "按钮操作失败: $_" } })
     return $b
 }
-function New-Badge($p, [double]$size = 22) {
-    $b = New-Object System.Windows.Controls.Border
-    $b.Width = $size; $b.Height = $size; $b.CornerRadius = [math]::Round($size * 0.32)
-    $b.Background = (Grad $p.color 45)
-    $fs = $size * 0.5; if ($p.letter.Length -gt 1) { $fs = $size * 0.4 }
-    $t = New-Text $p.letter $fs '#FFFFFFFF' 'Bold'
-    $t.HorizontalAlignment = 'Center'; $t.TextWrapping = 'NoWrap'
-    $b.Child = $t
-    return $b
+function New-Dot($hex, [double]$size = 6) {
+    $d = New-Object System.Windows.Shapes.Ellipse
+    $d.Width = $size; $d.Height = $size; $d.Fill = (Brush $hex); $d.VerticalAlignment = 'Center'
+    return $d
 }
 function Add-Col($grid, $width) { $cd = New-Object System.Windows.Controls.ColumnDefinition; $cd.Width = $width; [void]$grid.ColumnDefinitions.Add($cd) }
 $GLAuto = [System.Windows.GridLength]::Auto
 $GLStar = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
 
+# 鼠标移到小部件上才显示的元素（标题栏按钮、缩放、打开按钮）
+$script:hoverEls = New-Object System.Collections.ArrayList
+$script:isHover = $false
+function Track-Hover($el) { [void]$script:hoverEls.Add($el); if ($script:isHover) { $el.Opacity = 1 } else { $el.Opacity = 0 } }
+function Set-Hover([bool]$on) {
+    $script:isHover = $on
+    foreach ($el in @($script:hoverEls)) { if ($on) { $el.Opacity = 1 } else { $el.Opacity = 0 } }
+}
+
 function Format-Reset($dt) {
     if ($null -eq $dt) { return '' }
     $span = $dt - (Get-Date)
     if ($span.TotalSeconds -le 0) { return '即将重置' }
-    if ($span.TotalHours -lt 1) { return ('{0} 分钟后重置' -f [math]::Max(1, [int][math]::Floor($span.TotalMinutes))) }
-    if ($span.TotalHours -lt 24) { return ('{0} 小时 {1} 分后重置' -f [int][math]::Floor($span.TotalHours), $span.Minutes) }
+    if ($span.TotalHours -lt 1) { return ('{0}分钟后重置' -f [math]::Max(1, [int][math]::Floor($span.TotalMinutes))) }
+    if ($span.TotalHours -lt 24) { return ('{0}小时{1}分后重置' -f [int][math]::Floor($span.TotalHours), $span.Minutes) }
     $days = '周日', '周一', '周二', '周三', '周四', '周五', '周六'
-    return ('{0} {1:HH:mm} 重置 · {2} 天后' -f $days[[int]$dt.DayOfWeek], $dt, [int][math]::Floor($span.TotalDays))
+    return ('{0} {1:HH:mm} 重置' -f $days[[int]$dt.DayOfWeek], $dt)
 }
-function Left-Color($left, $brand) {
-    if ($left -lt 10) { return '#FFF87171' }
-    if ($left -lt 30) { return '#FFFBBF24' }
-    return $brand
+# 剩余充足用正文色，不足才变黄/红
+function Level-Color([double]$left) {
+    if ($left -lt 10) { return $C.Red }
+    if ($left -lt 30) { return $C.Amber }
+    return $C.Text
 }
 
 # ---------- 数据 → 每个 AI 的显示内容 ----------
@@ -561,215 +539,178 @@ function Format-Tokens([double]$n) {
 function Balance-Color($w) {
     $total = $w.normal + $w.bonus
     $low = 5; if ($w.currency -eq 'USD') { $low = 1 }
-    if ($total -le 0) { return '#FFF87171' }
-    if ($total -lt $low) { return '#FFFBBF24' }
-    return '#FF8FA3FF'
-}
-
-# DeepSeek：显示账户余额（充值 + 赠送）、可用 token 估算和累计消费
-function Add-BalanceRows($sp, $pd) {
-    $multi = @($pd.rows).Count -gt 1
-    $first = $true
-    foreach ($w in @($pd.rows)) {
-        $total = $w.normal + $w.bonus
-        $color = Balance-Color $w
-        $line = New-Object System.Windows.Controls.Grid
-        if ($first) { $line.Margin = '0,10,0,0' } else { $line.Margin = '0,12,0,0' }
-        $first = $false
-        $lbl = '账户余额'; if ($multi) { $lbl = "账户余额 · $($w.currency)" }
-        $l = New-Text $lbl 11.5 '#B8FFFFFF'; $l.VerticalAlignment = 'Bottom'
-        $v = New-Object System.Windows.Controls.TextBlock
-        $v.HorizontalAlignment = 'Right'; $v.VerticalAlignment = 'Bottom'
-        $txt = Money $w.currency $total
-        [void]$v.Inlines.Add((New-Run $txt.Substring(0, 1) 13 $color 'SemiBold' $NumFont))
-        [void]$v.Inlines.Add((New-Run $txt.Substring(1) 20 $color 'SemiBold' $NumFont))
-        [void]$line.Children.Add($l); [void]$line.Children.Add($v)
-        [void]$sp.Children.Add($line)
-
-        # 充值 / 赠送 构成条
-        if ($total -gt 0) {
-            $bar = New-Object System.Windows.Controls.Grid
-            $bar.Margin = '0,6,0,0'; $bar.Height = 6
-            Add-Col $bar (New-Object System.Windows.GridLength([math]::Max(0, $w.normal), [System.Windows.GridUnitType]::Star))
-            Add-Col $bar (New-Object System.Windows.GridLength([math]::Max(0, $w.bonus), [System.Windows.GridUnitType]::Star))
-            $a = New-Object System.Windows.Controls.Border; $a.CornerRadius = 3; $a.Background = (Grad '#FF4D6BFE' 0)
-            $b = New-Object System.Windows.Controls.Border; $b.CornerRadius = 3; $b.Background = (Grad '#FF22D3EE' 0); $b.Margin = '2,0,0,0'
-            [System.Windows.Controls.Grid]::SetColumn($b, 1)
-            if ($w.normal -le 0) { $b.Margin = '0' }
-            [void]$bar.Children.Add($a); [void]$bar.Children.Add($b)
-            [void]$sp.Children.Add($bar)
-        }
-
-        $detail = New-Object System.Windows.Controls.WrapPanel; $detail.Margin = '0,6,0,0'
-        foreach ($part in @(@('#FF4D6BFE', ('充值 ' + (Money $w.currency $w.normal))), @('#FF22D3EE', ('赠送 ' + (Money $w.currency $w.bonus))))) {
-            $dot = New-Object System.Windows.Shapes.Ellipse; $dot.Width = 6; $dot.Height = 6; $dot.Fill = (Brush $part[0]); $dot.Margin = '0,0,5,0'; $dot.VerticalAlignment = 'Center'
-            $t = New-Text $part[1] 10.5 '#99FFFFFF'; $t.Margin = '0,0,12,0'
-            [void]$detail.Children.Add($dot); [void]$detail.Children.Add($t)
-        }
-        [void]$sp.Children.Add($detail)
-
-        $meta = @()
-        if ($w.tokens -gt 0) { $meta += ('约可用 {0} tokens' -f (Format-Tokens $w.tokens)) }
-        if ($w.cost -gt 0) { $meta += ('累计消费 ' + (Money $w.currency $w.cost)) }
-        if ($meta.Count) {
-            $ml = New-Object System.Windows.Controls.StackPanel; $ml.Orientation = 'Horizontal'; $ml.Margin = '0,5,0,0'
-            $ci = New-Icon 0xE8C7 9 '#59FFFFFF'; $ci.Margin = '0,0,5,0'
-            [void]$ml.Children.Add($ci); [void]$ml.Children.Add((New-Text ($meta -join ' · ') 10 '#66FFFFFF'))
-            [void]$sp.Children.Add($ml)
-        }
-    }
+    if ($total -le 0) { return $C.Red }
+    if ($total -lt $low) { return $C.Amber }
+    return $C.Text
 }
 function Get-MinLeft($pd) {
-    if (-not $pd -or -not $pd.rows -or @($pd.rows).Count -eq 0) { return $null }
+    if (-not $pd -or $pd.balance -or -not $pd.rows -or @($pd.rows).Count -eq 0) { return $null }
     return [math]::Round((@($pd.rows) | ForEach-Object { [math]::Max(0, [math]::Min(100, 100 - $_.used)) } | Measure-Object -Minimum).Minimum)
 }
-
-function New-Card([string]$margin = '0,10,0,0') {
-    $b = New-Object System.Windows.Controls.Border
-    $b.CornerRadius = 13; $b.Background = (Brush '#0BFFFFFF'); $b.BorderBrush = (Brush '#12FFFFFF'); $b.BorderThickness = 1
-    $b.Padding = '12,10,12,11'; $b.Margin = $margin
-    $sp = New-Object System.Windows.Controls.StackPanel
-    $b.Child = $sp
-    [void]$Body.Children.Add($b)
-    return $sp
+# 一句话摘要：迷你模式 / 托盘图标用
+function Short-Text($p) {
+    $pd = Get-PData $p.id
+    if (-not $pd) { return '…' }
+    if ($pd.error) { return '!' }
+    if ($pd.balance -and $pd.rows) { $w = @($pd.rows)[0]; return (Money $w.currency ($w.normal + $w.bonus) '0') }
+    $m = Get-MinLeft $pd
+    if ($null -eq $m) { return '…' }
+    return "$m%"
+}
+function Short-Color($p) {
+    $pd = Get-PData $p.id
+    if (-not $pd) { return $C.Faint }
+    if ($pd.error) { return $C.Amber }
+    if ($pd.balance -and $pd.rows) { return (Balance-Color @($pd.rows)[0]) }
+    $m = Get-MinLeft $pd
+    if ($null -eq $m) { return $C.Faint }
+    return (Level-Color $m)
 }
 
-function Add-UsageCard($p, [bool]$animate) {
-    $sp = New-Card
+function Add-Divider {
+    $d = New-Object System.Windows.Controls.Border
+    $d.Height = 1; $d.Background = (Brush $C.Divider); $d.Margin = '0,13,0,13'
+    [void]$Body.Children.Add($d)
+}
+
+# 一个 AI 的区块：圆点 + 名称 + 套餐，下面是各个额度
+function Add-Section($p, [bool]$animate) {
     $pd = Get-PData $p.id
 
-    # 标题行：图标 + 名称 + 套餐 + 打开按钮
     $hdr = New-Object System.Windows.Controls.Grid
     Add-Col $hdr $GLStar; Add-Col $hdr $GLAuto
     $left = New-Object System.Windows.Controls.StackPanel; $left.Orientation = 'Horizontal'
-    [void]$left.Children.Add((New-Badge $p 22))
-    $nm = New-Text $p.name 13.5 '#F2FFFFFF' 'SemiBold'; $nm.Margin = '9,0,0,0'
-    [void]$left.Children.Add($nm)
+    $dot = New-Dot $p.color 6; $dot.Margin = '0,1,8,0'
+    [void]$left.Children.Add($dot)
+    [void]$left.Children.Add((New-Text $p.name 13 $C.Text 'SemiBold'))
     if ($pd -and $pd.plan) {
-        $pl = New-Object System.Windows.Controls.Border
-        $pl.CornerRadius = 5; $pl.Padding = '6,1,6,1'; $pl.Margin = '8,1,0,0'; $pl.VerticalAlignment = 'Center'
-        $pl.Background = (AlphaBrush $p.color 0x30)
-        $pt = New-Text $pd.plan 9.5 '#FFFFFFFF' 'SemiBold'; $pt.Foreground = New-Object System.Windows.Media.SolidColorBrush (Mix $p.color 0.35)
-        $pl.Child = $pt
+        $pl = New-Text $pd.plan 10 $C.Faint; $pl.Margin = '8,1,0,0'
         [void]$left.Children.Add($pl)
     }
     [void]$hdr.Children.Add($left)
     if ($p.appId) {
         $ob = New-Button ([string][char]0xE8A7) 'IconBtnSm' ("打开 " + $p.name) (Open-AppAction $p.appId)
-        [System.Windows.Controls.Grid]::SetColumn($ob, 1); $ob.Opacity = 0.7
+        $ob.Margin = '0,-3,-5,-3'
+        [System.Windows.Controls.Grid]::SetColumn($ob, 1)
+        Track-Hover $ob
         [void]$hdr.Children.Add($ob)
     }
-    [void]$sp.Children.Add($hdr)
+    [void]$Body.Children.Add($hdr)
 
     if ($null -eq $pd -or ($null -eq $pd.rows -and -not $pd.error)) {
-        $t = New-Text '正在获取…' 11 '#80FFFFFF'; $t.Margin = '0,10,0,0'
-        [void]$sp.Children.Add($t)
+        $t = New-Text '正在获取…' 11 $C.Faint; $t.Margin = '14,8,0,0'
+        [void]$Body.Children.Add($t)
         return
     }
 
     $watching = $script:watches.ContainsKey($pd.kind)
     if ($pd.error) {
-        $eb = New-Object System.Windows.Controls.Border
-        $eb.CornerRadius = 9; $eb.Background = (AlphaBrush '#FFF87171' 0x22); $eb.Padding = '10,8,10,8'; $eb.Margin = '0,10,0,0'
-        $es = New-Object System.Windows.Controls.StackPanel
-        $line = New-Object System.Windows.Controls.StackPanel; $line.Orientation = 'Horizontal'
-        $ic = New-Icon 0xE7BA 11 '#FFFCA5A5'; $ic.Margin = '0,0,7,0'
-        $et = New-Text $pd.error 11 '#FFFCA5A5'; $et.MaxWidth = 220
-        [void]$line.Children.Add($ic); [void]$line.Children.Add($et)
-        [void]$es.Children.Add($line)
+        $et = New-Text $pd.error 11 $C.Red; $et.Margin = '14,8,0,0'
+        [void]$Body.Children.Add($et)
         if ($watching) {
-            $w = New-Text '正在等待登录完成…' 10.5 '#B3FFFFFF'; $w.Margin = '18,5,0,0'; [void]$es.Children.Add($w)
+            $w = New-Text '正在等待登录完成…' 10.5 $C.Sub; $w.Margin = '14,5,0,0'; [void]$Body.Children.Add($w)
         } elseif ($pd.action) {
-            $label = '重新登录'; if ($pd.kind -eq 'codex') { $label = '打开 ChatGPT 续期' } elseif ($pd.kind -eq 'deepseek') { $label = '打开 DeepSeek 重新登录' }
-            $btn = New-Button $label 'PillBtn' $null ([scriptblock]::Create("Start-Relogin '$($pd.kind)'"))
-            $btn.Margin = '18,7,0,0'; $btn.HorizontalAlignment = 'Left'
-            [void]$es.Children.Add($btn)
+            $label = '重新登录 →'; if ($pd.kind -eq 'codex') { $label = '打开 ChatGPT 续期 →' } elseif ($pd.kind -eq 'deepseek') { $label = '打开 DeepSeek 重新登录 →' }
+            $btn = New-Button $label 'TextBtn' $null ([scriptblock]::Create("Start-Relogin '$($pd.kind)'"))
+            $btn.Margin = '14,6,0,0'; $btn.HorizontalAlignment = 'Left'; $btn.Foreground = (Brush $C.Text)
+            [void]$Body.Children.Add($btn)
         }
-        $eb.Child = $es
-        [void]$sp.Children.Add($eb)
         return
     }
 
-    if ($pd.balance) { Add-BalanceRows $sp $pd; return }
+    if ($pd.balance) { Add-BalanceRows $pd; return }
 
-    $first = $true
     foreach ($row in @($pd.rows)) {
         $leftPct = [math]::Max(0, [math]::Min(100, 100 - $row.used))
-        $color = Left-Color $leftPct $p.color
+        $numColor = Level-Color $leftPct
+        $barColor = $p.color; if ($leftPct -lt 30) { $barColor = $numColor }
 
         $line = New-Object System.Windows.Controls.Grid
-        if ($first) { $line.Margin = '0,10,0,0' } else { $line.Margin = '0,11,0,0' }
-        $first = $false
-        $l = New-Text $row.label 11.5 '#B8FFFFFF'; $l.VerticalAlignment = 'Bottom'
+        $line.Margin = '14,10,0,0'
+        $l = New-Object System.Windows.Controls.TextBlock; $l.VerticalAlignment = 'Bottom'
+        [void]$l.Inlines.Add((New-Run $row.label 11.5 $C.Sub))
+        $rs = Format-Reset $row.reset
+        if ($rs) { [void]$l.Inlines.Add((New-Run ('   ' + $rs) 10 $C.Faint)) }
         $v = New-Object System.Windows.Controls.TextBlock
         $v.HorizontalAlignment = 'Right'; $v.VerticalAlignment = 'Bottom'
-        [void]$v.Inlines.Add((New-Run '剩余 ' 10 '#73FFFFFF'))
-        [void]$v.Inlines.Add((New-Run ([string][math]::Round($leftPct)) 16 $color 'SemiBold' $NumFont))
-        [void]$v.Inlines.Add((New-Run '%' 11 $color 'SemiBold' $NumFont))
+        [void]$v.Inlines.Add((New-Run ([string][math]::Round($leftPct)) 15 $numColor 'SemiBold' $NumFont))
+        [void]$v.Inlines.Add((New-Run '%' 10.5 $C.Sub 'Normal' $NumFont))
         [void]$line.Children.Add($l); [void]$line.Children.Add($v)
-        [void]$sp.Children.Add($line)
+        [void]$Body.Children.Add($line)
 
-        # 进度条（显示剩余部分）
+        # 细进度条（显示剩余部分）
         $bar = New-Object System.Windows.Controls.Grid
-        $bar.Margin = '0,5,0,0'; $bar.Height = 6
+        $bar.Margin = '14,6,0,0'; $bar.Height = 3
         Add-Col $bar (New-Object System.Windows.GridLength($leftPct, [System.Windows.GridUnitType]::Star))
         Add-Col $bar (New-Object System.Windows.GridLength((100 - $leftPct), [System.Windows.GridUnitType]::Star))
         $track = New-Object System.Windows.Controls.Border
-        $track.CornerRadius = 3; $track.Background = (Brush '#17FFFFFF')
+        $track.CornerRadius = 1.5; $track.Background = (Brush $C.Track)
         [System.Windows.Controls.Grid]::SetColumnSpan($track, 2)
         $fill = New-Object System.Windows.Controls.Border
-        $fill.CornerRadius = 3; $fill.Background = (Grad $color 0)
+        $fill.CornerRadius = 1.5; $fill.Background = (Brush $barColor)
         if ($animate) {
             $st = New-Object System.Windows.Media.ScaleTransform 0, 1
             $fill.RenderTransform = $st; $fill.RenderTransformOrigin = New-Object System.Windows.Point 0, 0.5
-            $an = New-Object System.Windows.Media.Animation.DoubleAnimation 0, 1, ([System.Windows.Duration][TimeSpan]::FromMilliseconds(650))
+            $an = New-Object System.Windows.Media.Animation.DoubleAnimation 0, 1, ([System.Windows.Duration][TimeSpan]::FromMilliseconds(600))
             $ease = New-Object System.Windows.Media.Animation.CubicEase; $ease.EasingMode = 'EaseOut'; $an.EasingFunction = $ease
             $st.BeginAnimation([System.Windows.Media.ScaleTransform]::ScaleXProperty, $an)
         }
         [void]$bar.Children.Add($track); [void]$bar.Children.Add($fill)
-        [void]$sp.Children.Add($bar)
-
-        $rs = Format-Reset $row.reset
-        if ($rs) {
-            $rl = New-Object System.Windows.Controls.StackPanel; $rl.Orientation = 'Horizontal'; $rl.Margin = '0,5,0,0'
-            $ci = New-Icon 0xE823 9 '#59FFFFFF'; $ci.Margin = '0,0,5,0'
-            [void]$rl.Children.Add($ci); [void]$rl.Children.Add((New-Text $rs 10 '#66FFFFFF'))
-            [void]$sp.Children.Add($rl)
-        }
+        [void]$Body.Children.Add($bar)
     }
 
     # 登录状态提示
     if ($watching) {
-        $w = New-Text '正在等待登录完成…' 10.5 '#B3FFFFFF'; $w.Margin = '0,8,0,0'; [void]$sp.Children.Add($w)
+        $w = New-Text '正在等待登录完成…' 10.5 $C.Sub; $w.Margin = '14,8,0,0'; [void]$Body.Children.Add($w)
     } elseif ($pd.expires -and ($pd.expires - (Get-Date)).TotalDays -lt [double]$script:cfg.login_warn_days) {
-        $wb = New-Object System.Windows.Controls.Grid; $wb.Margin = '0,9,0,0'
-        Add-Col $wb $GLStar; Add-Col $wb $GLAuto
-        $wt = New-Text ('登录将于 {0:M月d日} 过期' -f $pd.expires) 10.5 '#FFFBBF24'
-        $btn = New-Button '续期' 'PillBtn' $null ([scriptblock]::Create("Start-Relogin '$($pd.kind)'"))
-        [System.Windows.Controls.Grid]::SetColumn($btn, 1)
-        [void]$wb.Children.Add($wt); [void]$wb.Children.Add($btn)
-        [void]$sp.Children.Add($wb)
+        $wb = New-Object System.Windows.Controls.StackPanel; $wb.Orientation = 'Horizontal'; $wb.Margin = '14,9,0,0'
+        [void]$wb.Children.Add((New-Text ('登录 {0:M月d日} 过期  ' -f $pd.expires) 10.5 $C.Amber))
+        $btn = New-Button '续期 →' 'TextBtn' $null ([scriptblock]::Create("Start-Relogin '$($pd.kind)'"))
+        $btn.Foreground = (Brush $C.Text); $btn.FontSize = 10.5
+        [void]$wb.Children.Add($btn)
+        [void]$Body.Children.Add($wb)
     }
 }
 
-function Add-OthersCard($list) {
-    $sp = New-Card
-    $hdr = New-Object System.Windows.Controls.StackPanel; $hdr.Orientation = 'Horizontal'
-    [void]$hdr.Children.Add((New-Text '其他 AI' 12.5 '#E6FFFFFF' 'SemiBold'))
-    $sub = New-Text '无公开用量数据 · 点击打开' 10 '#59FFFFFF'; $sub.Margin = '8,1,0,0'
-    [void]$hdr.Children.Add($sub)
-    [void]$sp.Children.Add($hdr)
-    $wrap = New-Object System.Windows.Controls.WrapPanel; $wrap.Margin = '0,8,0,0'
+# DeepSeek：余额一行 + 构成一行
+function Add-BalanceRows($pd) {
+    $multi = @($pd.rows).Count -gt 1
+    foreach ($w in @($pd.rows)) {
+        $total = $w.normal + $w.bonus
+        $color = Balance-Color $w
+        $line = New-Object System.Windows.Controls.Grid
+        $line.Margin = '14,10,0,0'
+        $lbl = '余额'; if ($multi) { $lbl = "余额 · $($w.currency)" }
+        $l = New-Text $lbl 11.5 $C.Sub; $l.VerticalAlignment = 'Bottom'
+        $v = New-Object System.Windows.Controls.TextBlock
+        $v.HorizontalAlignment = 'Right'; $v.VerticalAlignment = 'Bottom'
+        $txt = Money $w.currency $total
+        [void]$v.Inlines.Add((New-Run $txt.Substring(0, 1) 10.5 $C.Sub 'Normal' $NumFont))
+        [void]$v.Inlines.Add((New-Run $txt.Substring(1) 15 $color 'SemiBold' $NumFont))
+        [void]$line.Children.Add($l); [void]$line.Children.Add($v)
+        [void]$Body.Children.Add($line)
+
+        $parts = @(('充值 ' + (Money $w.currency $w.normal)), ('赠送 ' + (Money $w.currency $w.bonus)))
+        if ($w.cost -gt 0) { $parts += ('已用 ' + (Money $w.currency $w.cost)) }
+        if ($w.tokens -gt 0) { $parts += ('约 {0} tokens' -f (Format-Tokens $w.tokens)) }
+        $d = New-Text ($parts -join ' · ') 10 $C.Faint; $d.Margin = '14,5,0,0'
+        [void]$Body.Children.Add($d)
+    }
+}
+
+# 其他 AI：一行可点击的名称
+function Add-Others($list) {
+    $wrap = New-Object System.Windows.Controls.WrapPanel
+    $lab = New-Text '其他' 10.5 $C.Faint; $lab.Margin = '0,0,10,0'
+    [void]$wrap.Children.Add($lab)
+    $first = $true
     foreach ($p in $list) {
-        $c = New-Object System.Windows.Controls.StackPanel; $c.Orientation = 'Horizontal'
-        [void]$c.Children.Add((New-Badge $p 16))
-        $t = New-Text $p.name 11 '#E6FFFFFF'; $t.Margin = '6,0,0,0'
-        [void]$c.Children.Add($t)
-        $b = New-Button $c 'PillBtn' ("打开 " + $p.name) (Open-AppAction $p.appId)
-        $b.Padding = '5,4,9,4'; $b.Margin = '0,0,6,6'
+        if (-not $first) { $sep = New-Text ' · ' 11 $C.Faint; [void]$wrap.Children.Add($sep) }
+        $first = $false
+        $b = New-Button $p.name 'TextBtn' ("打开 " + $p.name) (Open-AppAction $p.appId)
         [void]$wrap.Children.Add($b)
     }
-    [void]$sp.Children.Add($wrap)
+    [void]$Body.Children.Add($wrap)
 }
 
 function Render-Pill {
@@ -777,47 +718,49 @@ function Render-Pill {
     $tips = @()
     $usage = @($script:found | Where-Object { $_.usage -and (Is-Visible $_.id) })
     foreach ($p in $usage) {
-        $pd = Get-PData $p.id
-        $it = New-Object System.Windows.Controls.StackPanel; $it.Orientation = 'Horizontal'; $it.Margin = '0,0,11,0'
-        [void]$it.Children.Add((New-Badge $p 17))
-        $min = $null; if (-not ($pd -and $pd.balance)) { $min = Get-MinLeft $pd }
-        if ($pd -and $pd.error) { $txt = '!'; $col = '#FFFBBF24'; $tips += "$($p.name)：$($pd.error)" }
-        elseif ($pd -and $pd.balance -and $pd.rows) {
-            $w = @($pd.rows)[0]
-            $txt = Money $w.currency ($w.normal + $w.bonus) '0.#'; $col = Balance-Color $w
-            $tips += "$($p.name)：" + ((@($pd.rows) | ForEach-Object { '余额 {0}（充值 {1} + 赠送 {2}）' -f (Money $_.currency ($_.normal + $_.bonus)), (Money $_.currency $_.normal), (Money $_.currency $_.bonus) }) -join '，')
-        }
-        elseif ($null -eq $min) { $txt = '…'; $col = '#80FFFFFF' }
-        else {
-            $txt = "$min%"; $col = Left-Color $min $p.color
-            $tips += "$($p.name)：" + ((@($pd.rows) | ForEach-Object { '{0} 剩余 {1}%' -f $_.label, [math]::Round([math]::Max(0, 100 - $_.used)) }) -join '，')
-        }
-        $t = New-Text $txt 13 $col 'SemiBold' $NumFont; $t.Margin = '6,0,0,0'
-        [void]$it.Children.Add($t)
+        $it = New-Object System.Windows.Controls.StackPanel; $it.Orientation = 'Horizontal'; $it.Margin = '0,0,13,0'
+        $dot = New-Dot $p.color 6; $dot.Margin = '0,1,6,0'
+        [void]$it.Children.Add($dot)
+        [void]$it.Children.Add((New-Text (Short-Text $p) 12.5 (Short-Color $p) 'SemiBold' $NumFont))
         [void]$PillBody.Children.Add($it)
+        $tips += ($p.name + ' ' + (Short-Text $p))
     }
-    if ($usage.Count -eq 0) { $t = New-Text 'AI 用量' 12 '#E6FFFFFF' 'SemiBold'; $t.Margin = '0,0,8,0'; [void]$PillBody.Children.Add($t) }
+    if ($usage.Count -eq 0) { $t = New-Text 'AI 用量' 11.5 $C.Sub; $t.Margin = '0,0,10,0'; [void]$PillBody.Children.Add($t) }
     [void]$PillBody.Children.Add((New-Button ([string][char]0xE740) 'IconBtnSm' '展开' { Set-Compact $false }))
-    if ($tips.Count) { $Pill.ToolTip = ($tips -join "`n") + "`n双击展开" } else { $Pill.ToolTip = '双击展开' }
+    $Pill.ToolTip = (($tips -join '   ') + "`n双击展开").Trim()
 }
 
 function Render([bool]$animate = $false) {
     try {
         $Body.Children.Clear()
+        $script:hoverEls.Clear()
+        foreach ($el in @($HeaderBtns, $ZoomCtl)) { Track-Hover $el }
         $vis = @($script:found | Where-Object { Is-Visible $_.id })
-        if ($vis.Count -eq 0) {
-            $sp = New-Card
-            $t = New-Text '没有要显示的 AI。点右上角 ⚙ 设置，选择要显示哪些。' 11 '#99FFFFFF'
-            [void]$sp.Children.Add($t)
-        }
-        foreach ($p in @($vis | Where-Object { $_.usage })) { Add-UsageCard $p $animate }
+        $usage = @($vis | Where-Object { $_.usage })
         $others = @($vis | Where-Object { -not $_.usage })
-        if ($others.Count -gt 0) { Add-OthersCard $others }
+        if ($vis.Count -eq 0) {
+            $t = New-Text '没有要显示的 AI。右键 → 设置，选择要显示哪些。' 11 $C.Sub; $t.Margin = '0,12,0,0'
+            [void]$Body.Children.Add($t)
+        }
+        $first = $true
+        foreach ($p in $usage) {
+            if ($first) { $sp = New-Object System.Windows.Controls.Border; $sp.Height = 12; [void]$Body.Children.Add($sp) } else { Add-Divider }
+            $first = $false
+            Add-Section $p $animate
+        }
+        if ($others.Count -gt 0) {
+            if ($first) { $sp = New-Object System.Windows.Controls.Border; $sp.Height = 12; [void]$Body.Children.Add($sp) } else { Add-Divider }
+            Add-Others $others
+        }
 
         if ($script:job) { $Footer.Text = '正在刷新…' }
-        elseif ($script:lastTime) { $Footer.Text = ('更新于 {0:HH:mm} · 每 {1} 分钟刷新' -f $script:lastTime, $script:cfg.refresh_minutes) }
-        if ($script:lastOk) { $StatusDot.Fill = (Brush '#FF4ADE80') } else { $StatusDot.Fill = (Brush '#FFFBBF24') }
+        elseif ($script:lastTime) {
+            $f = ('{0:HH:mm} 更新' -f $script:lastTime)
+            if (-not $script:lastOk) { $f += ' · 部分获取失败' }
+            $Footer.Text = $f
+        }
         Render-Pill
+        Update-Tray
     } catch { Write-Log "渲染失败: $_ $($_.InvocationInfo.PositionMessage)"; $Footer.Text = "渲染失败: $($_.Exception.Message)" }
 }
 
@@ -958,12 +901,12 @@ function Set-Zoom([double]$v) {
     }
     Save-Config
 }
-function Set-Compact([bool]$on) {
-    $script:cfg.compact = $on
-    if ($on) { $Card.Visibility = 'Collapsed'; $Pill.Visibility = 'Visible' }
+# 迷你模式只改变显示形态；托盘弹出时总是显示完整面板
+function Apply-View {
+    if ($script:cfg.compact -and -not $script:trayMode) { $Card.Visibility = 'Collapsed'; $Pill.Visibility = 'Visible' }
     else { $Card.Visibility = 'Visible'; $Pill.Visibility = 'Collapsed' }
-    Save-Config
 }
+function Set-Compact([bool]$on) { $script:cfg.compact = $on; Save-Config; Apply-View }
 function Set-Visible([string]$id, [bool]$on) {
     $h = @($script:cfg.hidden | Where-Object { $_ -ne $id })
     if (-not $on) { $h += $id }
@@ -977,30 +920,31 @@ function Set-RefreshMinutes([int]$m) {
     $refreshTimer.Interval = [TimeSpan]::FromMinutes($m)
     Render
 }
-function Set-Topmost([bool]$on) { $window.Topmost = $on; $script:cfg.topmost = $on; Save-Config }
+function Set-Topmost([bool]$on) { $script:cfg.topmost = $on; Save-Config; if (-not $script:trayMode) { $window.Topmost = $on } }
 
-# ---------- 设置窗口 ----------
+# ---------- 设置窗口（极简） ----------
 $script:settingsWin = $null
 function Fill-ProviderList {
     $list = $script:settingsWin.FindName('ProvList')
     $list.Children.Clear()
-    if (@($script:found).Count -eq 0) { [void]$list.Children.Add((New-Text '没有找到 AI 应用' 11 '#80FFFFFF')); return }
+    if (@($script:found).Count -eq 0) { [void]$list.Children.Add((New-Text '没有找到 AI 应用' 11 $C.Sub)); return }
     foreach ($p in $script:found) {
-        $g = New-Object System.Windows.Controls.Grid; $g.Margin = '0,9,0,0'
+        $g = New-Object System.Windows.Controls.Grid; $g.Margin = '0,10,0,0'
         Add-Col $g $GLAuto; Add-Col $g $GLStar; Add-Col $g $GLAuto
-        $bd = New-Badge $p 26
-        $txt = New-Object System.Windows.Controls.StackPanel; $txt.Margin = '10,0,0,0'; $txt.VerticalAlignment = 'Center'
-        [void]$txt.Children.Add((New-Text $p.name 12.5 '#F2FFFFFF' 'SemiBold'))
-        if ($p.id -eq 'claude')      { if (Test-Path $ClaudeCred) { $s = '可查看剩余用量' } else { $s = '已安装 · 未登录 Claude Code' } }
-        elseif ($p.id -eq 'chatgpt') { if (Test-Path $CodexAuth)  { $s = '可查看剩余用量（Codex 额度）' } else { $s = '已安装 · 未登录' } }
-        elseif ($p.id -eq 'deepseek') { if (Test-Path $DshCred)   { $s = '可查看账户余额（DeepSeek Harness 登录）' } else { $s = '已安装 · 未登录 DeepSeek Harness' } }
+        $dot = New-Dot $p.color 6; $dot.Margin = '0,0,10,0'; $dot.VerticalAlignment = 'Top'; $dot.Margin = '0,6,10,0'
+        $txt = New-Object System.Windows.Controls.StackPanel; $txt.VerticalAlignment = 'Center'
+        [void]$txt.Children.Add((New-Text $p.name 12.5 $C.Text))
+        if ($p.id -eq 'claude')       { if (Test-Path $ClaudeCred) { $s = '可查看剩余用量' } else { $s = '已安装 · 未登录 Claude Code' } }
+        elseif ($p.id -eq 'chatgpt')  { if (Test-Path $CodexAuth)  { $s = '可查看剩余用量（Codex 额度）' } else { $s = '已安装 · 未登录' } }
+        elseif ($p.id -eq 'deepseek') { if (Test-Path $DshCred)    { $s = '可查看账户余额' } else { $s = '已安装 · 未登录 DeepSeek Harness' } }
         else { $s = '已安装 · 仅快捷打开' }
-        [void]$txt.Children.Add((New-Text $s 10 '#73FFFFFF'))
+        $sub = New-Text $s 10 $C.Faint; $sub.Margin = '0,2,0,0'
+        [void]$txt.Children.Add($sub)
         $tg = New-Object System.Windows.Controls.Primitives.ToggleButton
         $tg.Style = $Styles['Switch']; $tg.IsChecked = (Is-Visible $p.id); $tg.Tag = $p.id; $tg.VerticalAlignment = 'Center'
         $tg.Add_Click({ param($s, $e) Set-Visible ([string]$s.Tag) ([bool]$s.IsChecked) })
         [System.Windows.Controls.Grid]::SetColumn($txt, 1); [System.Windows.Controls.Grid]::SetColumn($tg, 2)
-        [void]$g.Children.Add($bd); [void]$g.Children.Add($txt); [void]$g.Children.Add($tg)
+        [void]$g.Children.Add($dot); [void]$g.Children.Add($txt); [void]$g.Children.Add($tg)
         [void]$list.Children.Add($g)
     }
 }
@@ -1010,56 +954,47 @@ function Show-Settings {
     [xml]$sx = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AI 用量 · 设置" Width="372" SizeToContent="Height"
+        Title="AI 用量 · 设置" Width="352" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
         Topmost="True" ShowInTaskbar="True" WindowStartupLocation="CenterScreen" FontFamily="Microsoft YaHei UI" UseLayoutRounding="True">
-  <Border Margin="16" CornerRadius="18" BorderThickness="1" Padding="20,14,20,18">
-    <Border.Background>@@BG@@</Border.Background>
-    <Border.BorderBrush>@@BORDER@@</Border.BorderBrush>
-    <Border.Effect><DropShadowEffect BlurRadius="26" ShadowDepth="5" Direction="270" Opacity="0.55" Color="#000000"/></Border.Effect>
+  <Border Margin="14" CornerRadius="14" Background="#FF141417" BorderBrush="#18FFFFFF" BorderThickness="1" Padding="20,14,20,18">
+    <Border.Effect>@@SHADOW@@</Border.Effect>
     <StackPanel>
       <Grid x:Name="TitleBar" Background="Transparent">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="&#xE713;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" Foreground="#FF8B7CFF" VerticalAlignment="Center" Margin="0,0,8,0"/>
-          <TextBlock Text="设置" FontSize="15" FontWeight="SemiBold" Foreground="#F2FFFFFF" VerticalAlignment="Center"/>
-        </StackPanel>
-        <Button x:Name="BtnX" Style="{DynamicResource IconBtn}" Content="&#xE8BB;" HorizontalAlignment="Right" ToolTip="关闭"/>
+        <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold" Foreground="#FFEDEDEF" VerticalAlignment="Center"/>
+        <Button x:Name="BtnX" Style="{DynamicResource IconBtn}" Content="&#xE8BB;" HorizontalAlignment="Right" Margin="0,0,-8,0" ToolTip="关闭"/>
       </Grid>
 
-      <TextBlock Text="显示哪些 AI" FontSize="12.5" FontWeight="SemiBold" Foreground="#E6FFFFFF" Margin="0,16,0,0"/>
-      <TextBlock Text="已扫描这台电脑上安装的 AI，关掉开关即可隐藏" FontSize="10.5" Foreground="#66FFFFFF" Margin="0,2,0,0"/>
-      <StackPanel x:Name="ProvList" Margin="0,2,0,0"/>
-      <Button x:Name="BtnScan" Style="{DynamicResource PillBtn}" HorizontalAlignment="Left" Margin="0,12,0,0">
-        <StackPanel Orientation="Horizontal">
-          <TextBlock Text="&#xE72C;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
-          <TextBlock x:Name="ScanText" Text="重新扫描电脑"/>
-        </StackPanel>
+      <TextBlock Text="显示" FontSize="10.5" Foreground="#FF5E5E68" Margin="0,16,0,0"/>
+      <StackPanel x:Name="ProvList"/>
+      <Button x:Name="BtnScan" Style="{DynamicResource TextBtn}" HorizontalAlignment="Left" Margin="16,12,0,0">
+        <TextBlock x:Name="ScanText" Text="重新扫描电脑 →"/>
       </Button>
 
       <Border Height="1" Background="#12FFFFFF" Margin="0,16,0,0"/>
       <Grid Margin="0,14,0,0">
-        <TextBlock Text="大小" FontSize="12.5" FontWeight="SemiBold" Foreground="#E6FFFFFF"/>
-        <TextBlock x:Name="ZoomVal" HorizontalAlignment="Right" FontSize="12" Foreground="#FF8B7CFF" FontWeight="SemiBold"/>
+        <TextBlock Text="大小" FontSize="12.5" Foreground="#FFEDEDEF"/>
+        <TextBlock x:Name="ZoomVal" HorizontalAlignment="Right" FontSize="12" Foreground="#FF8B8B94"/>
       </Grid>
       <Slider x:Name="ZoomSlider" Style="{DynamicResource ZSlider}" Minimum="0.7" Maximum="1.8" SmallChange="0.05" LargeChange="0.1" Margin="0,6,0,0"/>
-      <TextBlock Text="也可以在小部件上按住 Ctrl 滚动鼠标滚轮" FontSize="10.5" Foreground="#66FFFFFF" Margin="0,2,0,0"/>
+      <TextBlock Text="也可以在小部件上按住 Ctrl 滚动鼠标滚轮" FontSize="10" Foreground="#FF5E5E68" Margin="0,2,0,0"/>
 
-      <TextBlock Text="自动刷新间隔" FontSize="12.5" FontWeight="SemiBold" Foreground="#E6FFFFFF" Margin="0,16,0,8"/>
-      <WrapPanel x:Name="RefreshSeg"/>
+      <TextBlock Text="自动刷新" FontSize="12.5" Foreground="#FFEDEDEF" Margin="0,16,0,8"/>
+      <WrapPanel x:Name="RefreshSeg" Margin="-10,0,0,0"/>
 
       <Border Height="1" Background="#12FFFFFF" Margin="0,10,0,0"/>
       <Grid Margin="0,14,0,0">
-        <TextBlock Text="始终置顶" FontSize="12.5" Foreground="#E6FFFFFF" VerticalAlignment="Center"/>
+        <TextBlock Text="始终置顶" FontSize="12.5" Foreground="#FFEDEDEF" VerticalAlignment="Center"/>
         <ToggleButton x:Name="TgTop" Style="{DynamicResource Switch}" HorizontalAlignment="Right"/>
       </Grid>
       <Grid Margin="0,12,0,0">
-        <TextBlock Text="开机自动启动" FontSize="12.5" Foreground="#E6FFFFFF" VerticalAlignment="Center"/>
+        <TextBlock Text="开机自动启动" FontSize="12.5" Foreground="#FFEDEDEF" VerticalAlignment="Center"/>
         <ToggleButton x:Name="TgAuto" Style="{DynamicResource Switch}" HorizontalAlignment="Right"/>
       </Grid>
     </StackPanel>
   </Border>
 </Window>
-'@.Replace('@@BG@@', $CardBg.Replace('#F7', '#FF')).Replace('@@BORDER@@', $CardBorder)
+'@.Replace('@@SHADOW@@', $Shadow)
     $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $sx))
     $w.Resources.MergedDictionaries.Add($Styles)
     $script:settingsWin = $w
@@ -1096,22 +1031,138 @@ function Show-Settings {
     $w.Show()
 }
 
+# ---------- 系统托盘 ----------
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -Namespace AIQuota -Name Native -MemberDefinition '[DllImport("user32.dll")] public static extern bool DestroyIcon(System.IntPtr h);'
+
+$tray = New-Object System.Windows.Forms.NotifyIcon
+$tray.Text = 'AI 用量'
+$script:trayHIcon = [IntPtr]::Zero
+$script:trayMode = $false          # 窗口当前是否作为“托盘弹出面板”显示
+$script:popupHiddenAt = [DateTime]::MinValue
+
+# 托盘图标：深色圆角方块 + 最紧张的剩余百分比
+function Update-Tray {
+    try {
+        $usage = @($script:found | Where-Object { $_.usage -and (Is-Visible $_.id) })
+        $min = $null; $tips = @()
+        foreach ($p in $usage) {
+            $pd = Get-PData $p.id
+            $m = Get-MinLeft $pd
+            if ($null -ne $m -and ($null -eq $min -or $m -lt $min)) { $min = $m }
+            $tips += ($p.name + ' ' + (Short-Text $p))
+        }
+        $label = 'AI'; $hex = $C.Text
+        if ($null -ne $min) { $label = [string][int]$min; $hex = Level-Color $min }
+
+        $bmp = New-Object System.Drawing.Bitmap 32, 32
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.SmoothingMode = 'AntiAlias'; $g.TextRenderingHint = 'AntiAliasGridFit'
+        $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $r = 8; $path.AddArc(0, 0, $r * 2, $r * 2, 180, 90); $path.AddArc(31 - $r * 2, 0, $r * 2, $r * 2, 270, 90)
+        $path.AddArc(31 - $r * 2, 31 - $r * 2, $r * 2, $r * 2, 0, 90); $path.AddArc(0, 31 - $r * 2, $r * 2, $r * 2, 90, 90); $path.CloseFigure()
+        $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 24, 24, 28))), $path)
+        $fs = 17; if ($label.Length -ge 3) { $fs = 12 }
+        $font = New-Object System.Drawing.Font('Segoe UI', $fs, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+        $col = [System.Drawing.ColorTranslator]::FromHtml('#' + $hex.Substring(3))
+        $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+        $g.DrawString($label, $font, (New-Object System.Drawing.SolidBrush $col), (New-Object System.Drawing.RectangleF(0, 1, 32, 32)), $sf)
+        $g.Dispose()
+        if ($env:AIQUOTA_TRAYPNG) { try { $bmp.Save($env:AIQUOTA_TRAYPNG) } catch {} }
+        $h = $bmp.GetHicon(); $bmp.Dispose()
+        $tray.Icon = [System.Drawing.Icon]::FromHandle($h)
+        if ($script:trayHIcon -ne [IntPtr]::Zero) { [void][AIQuota.Native]::DestroyIcon($script:trayHIcon) }
+        $script:trayHIcon = $h
+
+        $tip = 'AI 用量'; if ($tips.Count) { $tip = $tips -join ' · ' }
+        if ($tip.Length -gt 63) { $tip = $tip.Substring(0, 62) + '…' }
+        $tray.Text = $tip
+    } catch { Write-Log "托盘图标更新失败: $_" }
+}
+
+# 托盘弹出：在屏幕右下角显示完整面板，点别处自动收起
+function Show-TrayPopup {
+    $script:trayMode = $true
+    Apply-View
+    $window.Topmost = $true
+    $window.Opacity = 0                          # 先透明显示量出尺寸，摆好位置再显示，避免闪一下
+    $window.Show()
+    $window.UpdateLayout()
+    $wa = [System.Windows.SystemParameters]::WorkArea
+    $window.Left = $wa.Right - $window.ActualWidth + 6
+    $window.Top = $wa.Bottom - $window.ActualHeight + 6
+    $window.Opacity = 1
+    $window.Activate() | Out-Null
+}
+function Hide-TrayPopup {
+    if (-not $script:trayMode) { return }
+    $script:trayMode = $false
+    $script:popupHiddenAt = Get-Date
+    $window.Hide()
+    Restore-Position
+    Apply-View
+    $window.Topmost = [bool]$script:cfg.topmost
+}
+function Minimize-ToTray {
+    $script:cfg.minimized = $true; Save-Config
+    $window.Hide()
+    if (-not $script:cfg.tray_tip_shown) {
+        $script:cfg.tray_tip_shown = $true; Save-Config
+        $tray.ShowBalloonTip(4000, 'AI 用量', '已最小化到系统托盘。单击托盘图标查看用量，双击恢复悬浮窗。', 'Info')
+    }
+}
+function Restore-Widget {
+    $script:trayMode = $false
+    $script:cfg.minimized = $false; Save-Config
+    Restore-Position
+    Apply-View
+    $window.Topmost = [bool]$script:cfg.topmost
+    $window.Show()
+    $window.Activate() | Out-Null
+}
+
+$tray.Add_MouseClick({
+    param($s, $e)
+    if ($e.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+    if ($script:trayMode) { Hide-TrayPopup; return }
+    # 刚因为点托盘而失焦收起，不要马上又弹出
+    if (((Get-Date) - $script:popupHiddenAt).TotalMilliseconds -lt 400) { return }
+    if ($script:cfg.minimized) { Show-TrayPopup } else { $window.Activate() | Out-Null }
+})
+$tray.Add_MouseDoubleClick({ param($s, $e) if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Restore-Widget } })
+
+$trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+function Add-TrayItem($text, [scriptblock]$action) {
+    $it = New-Object System.Windows.Forms.ToolStripMenuItem $text
+    $it.Tag = $action
+    $it.Add_Click({ param($s, $e) try { & $s.Tag } catch { Write-Log "托盘菜单失败: $_" } })
+    [void]$trayMenu.Items.Add($it)
+}
+Add-TrayItem '显示悬浮窗' { Restore-Widget }
+Add-TrayItem '最小化到托盘' { Minimize-ToTray }
+Add-TrayItem '立即刷新' { Start-Refresh }
+Add-TrayItem '设置…' { Show-Settings }
+[void]$trayMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+Add-TrayItem '退出' { Exit-App }
+$tray.ContextMenuStrip = $trayMenu
+
 # ---------- 标题栏按钮 / 缩放控件 ----------
-[void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE921) 'IconBtn' '迷你模式' { Set-Compact $true }))
+[void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE73F) 'IconBtn' '迷你模式' { Set-Compact $true }))
+[void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE921) 'IconBtn' '最小化到托盘' { if ($script:trayMode) { Hide-TrayPopup } else { Minimize-ToTray } }))
 [void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE713) 'IconBtn' '设置' { Show-Settings }))
 [void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE72C) 'IconBtn' '立即刷新' { Start-Refresh }))
-[void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE8BB) 'IconBtn' '关闭' { $window.Close() }))
+[void]$HeaderBtns.Children.Add((New-Button ([string][char]0xE8BB) 'IconBtn' '退出' { Exit-App }))
 
-[void]$ZoomCtl.Children.Add((New-Button ([string][char]0xE71F) 'IconBtnSm' '缩小' { Set-Zoom ($script:cfg.scale - 0.1) }))
-$ZoomLabel.FontSize = 10.5; $ZoomLabel.Foreground = (Brush '#99FFFFFF'); $ZoomLabel.VerticalAlignment = 'Center'
-$ZoomLabel.Margin = '2,0,2,0'; $ZoomLabel.Cursor = 'Hand'; $ZoomLabel.ToolTip = '点击恢复 100%'; $ZoomLabel.MinWidth = 30; $ZoomLabel.TextAlignment = 'Center'
+[void]$ZoomCtl.Children.Add((New-Button ([string][char]0xE738) 'IconBtnSm' '缩小' { Set-Zoom ($script:cfg.scale - 0.1) }))
+$ZoomLabel.FontSize = 10; $ZoomLabel.Foreground = (Brush $C.Faint); $ZoomLabel.VerticalAlignment = 'Center'
+$ZoomLabel.Cursor = 'Hand'; $ZoomLabel.ToolTip = '点击恢复 100%'; $ZoomLabel.MinWidth = 32; $ZoomLabel.TextAlignment = 'Center'
 $ZoomLabel.Add_MouseLeftButtonDown({ param($s, $e) $e.Handled = $true; Set-Zoom 1.0 })
 [void]$ZoomCtl.Children.Add($ZoomLabel)
-[void]$ZoomCtl.Children.Add((New-Button ([string][char]0xE8A3) 'IconBtnSm' '放大' { Set-Zoom ($script:cfg.scale + 0.1) }))
+[void]$ZoomCtl.Children.Add((New-Button ([string][char]0xE710) 'IconBtnSm' '放大' { Set-Zoom ($script:cfg.scale + 0.1) }))
 
-# 鼠标移到小部件上时按钮变清晰
-$Card.Add_MouseEnter({ $HeaderBtns.Opacity = 1; $ZoomCtl.Opacity = 1 })
-$Card.Add_MouseLeave({ $HeaderBtns.Opacity = 0.5; $ZoomCtl.Opacity = 0.5 })
+# 鼠标移到小部件上才显示按钮
+$Card.Add_MouseEnter({ Set-Hover $true })
+$Card.Add_MouseLeave({ Set-Hover $false })
 
 # ---------- 右键菜单 ----------
 $menu = New-Object System.Windows.Controls.ContextMenu
@@ -1124,6 +1175,7 @@ function Add-MenuItem($header, [scriptblock]$action) {
 Add-MenuItem '立即刷新' { Start-Refresh }
 Add-MenuItem '设置…' { Show-Settings }
 Add-MenuItem '迷你模式 / 展开' { Set-Compact (-not [bool]$script:cfg.compact) }
+Add-MenuItem '最小化到托盘' { Minimize-ToTray }
 [void]$menu.Items.Add((New-Object System.Windows.Controls.Separator))
 Add-MenuItem '放大' { Set-Zoom ($script:cfg.scale + 0.1) }
 Add-MenuItem '缩小' { Set-Zoom ($script:cfg.scale - 0.1) }
@@ -1133,23 +1185,26 @@ Add-MenuItem '重新登录 Claude…' { Start-Relogin 'claude' }
 Add-MenuItem '打开 ChatGPT 应用续期…' { Start-Relogin 'codex' }
 Add-MenuItem '打开 DeepSeek 重新登录…' { Start-Relogin 'deepseek' }
 [void]$menu.Items.Add((New-Object System.Windows.Controls.Separator))
-Add-MenuItem '退出' { $window.Close() }
+Add-MenuItem '退出' { Exit-App }
 $window.ContextMenu = $menu
 
 # ---------- 位置 / 拖动 / 滚轮缩放 ----------
-$window.Topmost = [bool]$script:cfg.topmost
 $wa = [System.Windows.SystemParameters]::WorkArea
-if ($null -ne $script:cfg.left -and $null -ne $script:cfg.top -and
-    [double]$script:cfg.left -ge $wa.Left - 200 -and [double]$script:cfg.left -le $wa.Right - 80 -and
-    [double]$script:cfg.top -ge $wa.Top - 40 -and [double]$script:cfg.top -le $wa.Bottom - 80) {
-    $window.Left = [double]$script:cfg.left; $window.Top = [double]$script:cfg.top
-} else {
-    $window.Left = $wa.Right - 350; $window.Top = $wa.Top + 10
+function Restore-Position {
+    if ($null -ne $script:cfg.left -and $null -ne $script:cfg.top -and
+        [double]$script:cfg.left -ge $wa.Left - 200 -and [double]$script:cfg.left -le $wa.Right - 80 -and
+        [double]$script:cfg.top -ge $wa.Top - 40 -and [double]$script:cfg.top -le $wa.Bottom - 80) {
+        $window.Left = [double]$script:cfg.left; $window.Top = [double]$script:cfg.top
+    } else {
+        $window.Left = $wa.Right - 330; $window.Top = $wa.Top + 10
+    }
 }
+Restore-Position
 
 $window.Add_MouseLeftButtonDown({
     param($s, $e)
-    if ($e.ClickCount -eq 2 -and $script:cfg.compact) { Set-Compact $false; return }
+    if ($e.ClickCount -eq 2 -and $script:cfg.compact -and -not $script:trayMode) { Set-Compact $false; return }
+    if ($script:trayMode) { return }
     try { $window.DragMove() } catch {}
     $script:cfg.left = [math]::Round($window.Left); $script:cfg.top = [math]::Round($window.Top); Save-Config
 })
@@ -1160,28 +1215,46 @@ $window.Add_PreviewMouseWheel({
         if ($e.Delta -gt 0) { Set-Zoom ($script:cfg.scale + 0.05) } else { Set-Zoom ($script:cfg.scale - 0.05) }
     }
 })
-# 放在屏幕右半边时，缩放/切换迷你模式保持右边缘不动
+# 尺寸变化时：放在屏幕右半边保持右边缘不动；托盘弹出时保持右下角不动
 $window.Add_SizeChanged({
     param($s, $e)
-    if ($e.WidthChanged -and $e.PreviousSize.Width -gt 0) {
-        if (($window.Left + $e.PreviousSize.Width / 2) -gt ($wa.Left + $wa.Width / 2)) {
-            $window.Left = $window.Left - ($e.NewSize.Width - $e.PreviousSize.Width)
-        }
+    if ($e.PreviousSize.Width -le 0) { return }
+    if ($script:trayMode) {
+        $window.Left = $window.Left - ($e.NewSize.Width - $e.PreviousSize.Width)
+        $window.Top = $window.Top - ($e.NewSize.Height - $e.PreviousSize.Height)
+        return
+    }
+    if ($e.WidthChanged -and ($window.Left + $e.PreviousSize.Width / 2) -gt ($wa.Left + $wa.Width / 2)) {
+        $window.Left = $window.Left - ($e.NewSize.Width - $e.PreviousSize.Width)
     }
 })
+$window.Add_Deactivated({ if ($script:trayMode -and -not $env:AIQUOTA_SHOW) { Hide-TrayPopup } })
 
-$window.Add_Closed({
+$app = New-Object System.Windows.Application
+$app.ShutdownMode = 'OnExplicitShutdown'
+$script:exiting = $false
+function Exit-App {
+    if ($script:exiting) { return }
+    $script:exiting = $true
     $poll.Stop(); $refreshTimer.Stop(); $clock.Stop(); $loginWatch.Stop()
     if ($script:settingsWin) { $script:settingsWin.Close() }
-    $script:cfg.left = [math]::Round($window.Left); $script:cfg.top = [math]::Round($window.Top)
     Save-Config
+    $tray.Visible = $false; $tray.Dispose()
+    if ($script:trayHIcon -ne [IntPtr]::Zero) { [void][AIQuota.Native]::DestroyIcon($script:trayHIcon) }
     try { $script:mutex.ReleaseMutex() } catch {}
-})
-$window.Add_ContentRendered({ Start-Refresh })
+    $app.Shutdown()
+}
+$window.Add_Closed({ Exit-App })
 
 # 初始状态
 $script:zoomBusy = $true; Set-Zoom ([double]$script:cfg.scale); $script:zoomBusy = $false
-Set-Compact ([bool]$script:cfg.compact)
+Apply-View
 Render
-
-[void]$window.ShowDialog()
+$tray.Visible = $true
+if (-not $script:cfg.minimized) { $window.Show() }
+[void]$window.Dispatcher.BeginInvoke([action]{ Start-Refresh })
+# 调试用：AIQUOTA_SHOW=settings / tray 启动后直接打开设置或托盘面板（截图验证用）
+if ($env:AIQUOTA_SHOW -eq 'settings') { [void]$window.Dispatcher.BeginInvoke([action]{ Show-Settings }) }
+if ($env:AIQUOTA_SHOW -eq 'tray') { [void]$window.Dispatcher.BeginInvoke([action]{ Show-TrayPopup }) }
+if ($env:AIQUOTA_HOVER) { $Card.Add_MouseLeave({ Set-Hover $true }); Set-Hover $true }
+[void]$app.Run()
